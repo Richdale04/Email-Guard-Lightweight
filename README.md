@@ -47,13 +47,35 @@ All scan endpoints return results in the same format for frontend compatibility:
 
 1. **Connect Repository**: Link your GitHub repository to Render
 2. **Create Web Service**: Use the `render.yaml` configuration
-3. **Environment Variables**: Set any required environment variables
+3. **Environment Variables**: Set the required environment variables:
+   - `JWT_SECRET_KEY`: A secure random string for JWT token signing
 4. **Deploy**: Render will automatically build and deploy your service
 
 ### Build Configuration
 - **Build Command**: `pip install -r requirements.txt`
 - **Start Command**: `python start_backend.py`
 - **Python Version**: 3.9.16
+
+### Environment Variables
+Copy `env.example` to `.env` and update the values:
+```bash
+cp env.example .env
+```
+
+Required variables:
+- `JWT_SECRET_KEY`: Secret key for JWT token signing (generate a secure random string)
+
+**Generate a secure JWT secret key:**
+```bash
+# On Linux/Mac
+openssl rand -hex 32
+
+# On Windows PowerShell
+[System.Web.Security.Membership]::GeneratePassword(64, 0)
+
+# Or use Python
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 
 ## Local Development
 
@@ -62,12 +84,18 @@ All scan endpoints return results in the same format for frontend compatibility:
    pip install -r requirements.txt
    ```
 
-2. **Run the Server**:
+2. **Set up Environment Variables**:
+   ```bash
+   cp env.example .env
+   # Edit .env and set your JWT_SECRET_KEY
+   ```
+
+3. **Run the Server**:
    ```bash
    python start_backend.py
    ```
 
-3. **Access the API**: http://localhost:8000
+4. **Access the API**: http://localhost:8000
 
 ## Project Structure
 

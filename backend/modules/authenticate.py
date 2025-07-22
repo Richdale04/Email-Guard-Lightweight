@@ -4,9 +4,13 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from typing import Optional, Dict, Any
 import hashlib
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # JWT Configuration
-SECRET_KEY = "JWT_SECRET_KEY"  # In production, use environment variable
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

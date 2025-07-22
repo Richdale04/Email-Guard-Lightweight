@@ -7,4 +7,6 @@ services:
     startCommand: python start_backend.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.16 
+        value: 3.9.16
+      - key: JWT_SECRET_KEY
+        generateValue: true 
