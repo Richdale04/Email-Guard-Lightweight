@@ -1,31 +1,17 @@
 # ai/email_guard.py
 import os
 import sys
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional
 import re
-import numpy as np
 from datetime import datetime
 
-# Add models directory to path
-# Get the actual directory of this file, not the importing file
-models_dir = '/app/ai/models/'
-
-# Try to import ML libraries
+# Try to import phishing_detection_py
 try:
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification
-    import torch
-    ML_AVAILABLE = True
-except ImportError:
-    ML_AVAILABLE = False
-    print("Warning: ML libraries not available. Using rule-based analysis only.")
-
-# Try to import phishing-detector
-try:
-    from phishing_detector import PhishingDetector
+    from phishing_detection_py import PhishingDetector
     PHISHING_DETECTOR_AVAILABLE = True
 except ImportError:
     PHISHING_DETECTOR_AVAILABLE = False
-    print("Warning: phishing-detector not available.")
+    print("Warning: phishing_detection_py not available.")
 
 class ModelAnalyzer:
     """Base class for all model analyzers"""
@@ -38,318 +24,328 @@ class ModelAnalyzer:
         """Analyze email text and return results"""
         raise NotImplementedError("Subclasses must implement analyze method")
 
-class CybersectonyDistilbertAnalyzer(ModelAnalyzer):
-    """Analyzer for cybersectony-phishing-email-detection-distilbert_v2.1 model"""
-    
-    def __init__(self):
-        super().__init__("cybersectony-distilbert", "HuggingFace")
-        self.tokenizer = None
-        self.model = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.load_model()
-    
-    def load_model(self):
-        """Load the model and tokenizer"""
-        if not ML_AVAILABLE:
-            return
-        
-        model_path = os.path.join(models_dir, "cybersectony-phishing-email-detection-distilbert_v2.1")
-        if os.path.exists(model_path):
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-                self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
-                self.model.to(self.device)
-                self.model.eval()
-                print(f"Loaded model: {self.model_name}")
-            except Exception as e:
-                print(f"Failed to load model {self.model_name}: {e}")
-    
-    def analyze(self, email_text: str) -> Dict[str, Any]:
-        """Analyze email using cybersectony model"""
-        if not self.model or not self.tokenizer:
-            return self._error_result("Model not loaded")
-        
-        try:
-            # Preprocess and tokenize
-            inputs = self.tokenizer(
-                email_text,
-                return_tensors="pt",
-                truncation=True,
-                max_length=512
-            ).to(self.device)
-            
-            # Get prediction
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            
-            # Get probabilities for each class
-            probs = predictions[0].tolist()
-            
-            # Create labels dictionary
-            labels = {
-                "legitimate_email": probs[0],
-                "phishing_url": probs[1],
-                "legitimate_url": probs[2],
-                "phishing_url_alt": probs[3]
-            }
-            
-            # Determine the most likely classification
-            max_label = max(labels.items(), key=lambda x: x[1])
-            
-            # Map to standard decision format
-            if "phishing" in max_label[0]:
-                decision = "phishing"
-            elif "legitimate" in max_label[0]:
-                decision = "safe"
-            else:
-                decision = "unknown"
-            
-            return {
-                "model_source": self.model_source,
-                "model_name": self.model_name,
-                "decision": decision,
-                "confidence": max_label[1],
-                "description": f"Prediction: {max_label[0]} with {max_label[1]:.2%} confidence"
-            }
-            
-        except Exception as e:
-            return self._error_result(f"Analysis failed: {str(e)}")
-    
-    def _error_result(self, error_msg: str) -> Dict[str, Any]:
-        return {
-            "model_source": self.model_source,
-            "model_name": self.model_name,
-            "decision": "error",
-            "confidence": 0.0,
-            "description": error_msg
-        }
-
-class AamoshDistilbertAnalyzer(ModelAnalyzer):
-    """Analyzer for aamoshdahal-email-phishing-distilbert-finetuned model"""
-    
-    def __init__(self):
-        super().__init__("aamosh-distilbert", "HuggingFace")
-        self.tokenizer = None
-        self.model = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.load_model()
-    
-    def load_model(self):
-        """Load the model and tokenizer"""
-        if not ML_AVAILABLE:
-            return
-        
-        model_path = os.path.join(models_dir, "aamoshdahal-email-phishing-distilbert-finetuned")
-        if os.path.exists(model_path):
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-                self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
-                self.model.to(self.device)
-                self.model.eval()
-                print(f"Loaded model: {self.model_name}")
-            except Exception as e:
-                print(f"Failed to load model {self.model_name}: {e}")
-    
-    def analyze(self, email_text: str) -> Dict[str, Any]:
-        """Analyze email using aamosh model"""
-        if not self.model or not self.tokenizer:
-            return self._error_result("Model not loaded")
-        
-        try:
-            # Tokenize and prepare the input
-            encoded_input = self.tokenizer(
-                email_text, 
-                return_tensors='pt', 
-                truncation=True, 
-                padding=True
-            ).to(self.device)
-            
-            # Make prediction
-            with torch.no_grad():
-                outputs = self.model(**encoded_input)
-                probs = torch.nn.functional.softmax(outputs.logits, dim=1)
-            
-            # Output prediction
-            labels = ["legitimate", "phishing"]
-            pred_label = labels[probs.argmax()]
-            confidence = probs.max().item()
-            
-            # Map to standard decision format
-            if pred_label == "phishing":
-                decision = "phishing"
-            elif pred_label == "legitimate":
-                decision = "safe"
-            else:
-                decision = "unknown"
-            
-            return {
-                "model_source": self.model_source,
-                "model_name": self.model_name,
-                "decision": decision,
-                "confidence": confidence,
-                "description": f"Prediction: {pred_label} with {confidence:.2%} confidence"
-            }
-            
-        except Exception as e:
-            return self._error_result(f"Analysis failed: {str(e)}")
-    
-    def _error_result(self, error_msg: str) -> Dict[str, Any]:
-        return {
-            "model_source": self.model_source,
-            "model_name": self.model_name,
-            "decision": "error",
-            "confidence": 0.0,
-            "description": error_msg
-        }
-
 class PhishingDetectorAnalyzer(ModelAnalyzer):
-    """Analyzer using the phishing-detector package"""
+    """Primary analyzer using phishing-detection-py package"""
     
     def __init__(self):
-        super().__init__("phishing-detector", "PyPI")
+        super().__init__("phishing-detection-py", "PyPI")
         self.detector = None
         self.load_model()
     
     def load_model(self):
-        """Load the phishing detector"""
+        """Load the phishing detector model"""
         if not PHISHING_DETECTOR_AVAILABLE:
+            print("Warning: phishing-detection-py not available, using rule-based analysis only")
             return
         
         try:
-            self.detector = PhishingDetector()
-            print(f"Loaded model: {self.model_name}")
+            # Initialize the phishing detector for URL analysis
+            self.detector = PhishingDetector(model_type="url")
+            print(f"✓ Loaded primary model: {self.model_name}")
         except Exception as e:
-            print(f"Failed to load model {self.model_name}: {e}")
+            print(f"✗ Failed to load primary model {self.model_name}: {e}")
+            print("   Using rule-based analysis as fallback")
+            # Don't set detector to None, so we can still use text analysis
     
     def analyze(self, email_text: str) -> Dict[str, Any]:
-        """Analyze email using phishing-detector"""
-        if not self.detector:
-            return self._error_result("Model not loaded")
-        
+        """Analyze email using phishing-detection-py"""
         try:
-            # Use the phishing detector
-            result = self.detector.predict(email_text)
+            # Extract URLs from email text for analysis
+            urls = self._extract_urls(email_text)
             
-            # Map result to standard format
-            if hasattr(result, 'prediction'):
-                prediction = result.prediction
-                confidence = getattr(result, 'confidence', 0.8)
-            else:
-                # Handle different result formats
-                prediction = str(result).lower()
-                confidence = 0.8
+            # If we have a working detector and URLs, try URL analysis
+            if self.detector and urls:
+                try:
+                    # Analyze the first URL using the detector
+                    url_result = self.detector.predict(urls[0])
+                    
+                    # Process the result - phishing-detection-py returns a dict with prediction and description
+                    if url_result is not None:
+                        if isinstance(url_result, dict):
+                            # Extract prediction and description from the result
+                            prediction = url_result.get('prediction', 0)
+                            description = url_result.get('description', 'No description available')
+                            confidence = url_result.get('confidence', 0.85)
+                        else:
+                            # Fallback if result is just a prediction value
+                            prediction = url_result
+                            description = f'URL analysis result for {urls[0]}'
+                            confidence = 0.85
+                        
+                        # Map prediction to standard format
+                        if prediction == 1:
+                            decision = 'phishing'
+                        elif prediction == 0:
+                            decision = 'safe'
+                        else:
+                            decision = 'unknown'
+                        
+                        return {
+                            'model_source': self.model_source,
+                            'model_name': self.model_name,
+                            'decision': decision,
+                            'confidence': confidence,
+                            'description': description
+                        }
+                except Exception as e:
+                    # If URL analysis fails, fall back to text analysis
+                    print(f"URL analysis failed, falling back to text analysis: {e}")
             
-            # Map to standard decision format
-            if "phishing" in prediction or "malicious" in prediction:
-                decision = "phishing"
-            elif "safe" in prediction or "legitimate" in prediction:
-                decision = "safe"
-            else:
-                decision = "unknown"
-            
-            return {
-                "model_source": self.model_source,
-                "model_name": self.model_name,
-                "decision": decision,
-                "confidence": confidence,
-                "description": f"Phishing detector prediction: {prediction}"
-            }
+            # Fall back to text content analysis
+            return self._analyze_text_content(email_text)
             
         except Exception as e:
             return self._error_result(f"Analysis failed: {str(e)}")
     
-    def _error_result(self, error_msg: str) -> Dict[str, Any]:
-        return {
-            "model_source": self.model_source,
-            "model_name": self.model_name,
-            "decision": "error",
-            "confidence": 0.0,
-            "description": error_msg
-        }
-
-class RuleBasedAnalyzer(ModelAnalyzer):
-    """Rule-based analyzer as fallback"""
+    def _extract_urls(self, text: str) -> List[str]:
+        """Extract URLs from email text"""
+        import re
+        url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+        urls = re.findall(url_pattern, text)
+        return urls
     
-    def __init__(self):
-        super().__init__("rule-based", "Pattern Matching")
-    
-    def analyze(self, email_text: str) -> Dict[str, Any]:
-        """Perform rule-based analysis"""
+    def _analyze_text_content(self, email_text: str) -> Dict[str, Any]:
+        """Analyze email text content when no URLs are present or ML model fails"""
+        # Use rule-based analysis as fallback
+        
+        # Check for suspicious patterns
+        suspicious_words = ['urgent', 'account suspended', 'verify identity', 'click here', 'bank', 'password']
         text_lower = email_text.lower()
         
-        # Define patterns for different types of threats
-        phishing_patterns = [
-            r'\b(?:urgent|immediate|asap|emergency|critical)\b',
-            r'\b(?:bank|account|credit|debit|payment|transfer)\b',
-            r'\b(?:password|ssn|social security|credit card)\b',
-            r'\b(?:click here|login|verify|confirm)\b',
-            r'http[s]?://[^\s]*\.(?:tk|ml|ga|cf|gq)',
-            r'\b(?:microsoft|google|apple|amazon|paypal)\b.*\b(?:suspended|locked|verify)\b'
-        ]
+        suspicious_count = sum(1 for word in suspicious_words if word in text_lower)
         
-        spam_patterns = [
-            r'\b(?:free|discount|offer|limited time|act now)\b',
-            r'\b(?:lottery|winner|prize|claim)\b',
-            r'\b(?:viagra|cialis|weight loss|diet)\b',
-            r'\b(?:investment|bitcoin|crypto|money making)\b'
-        ]
-        
-        # Count matches
-        phishing_score = sum(len(re.findall(pattern, text_lower)) for pattern in phishing_patterns)
-        spam_score = sum(len(re.findall(pattern, text_lower)) for pattern in spam_patterns)
-        
-        # Calculate risk scores
-        total_score = phishing_score * 2 + spam_score
-        
-        if total_score >= 6:
+        # Create detailed description
+        if suspicious_count >= 3:
             decision = 'phishing'
-            confidence = min(0.9, 0.6 + (total_score - 6) * 0.1)
-        elif total_score >= 3:
+            confidence = min(0.8 + (suspicious_count - 3) * 0.1, 0.95)
+            description = f'High risk phishing indicators detected: {suspicious_count} suspicious patterns found in email content. Multiple red flags suggest this is likely a phishing attempt.'
+        elif suspicious_count >= 1:
             decision = 'spam'
-            confidence = min(0.8, 0.5 + (total_score - 3) * 0.1)
+            confidence = 0.6 + suspicious_count * 0.1
+            description = f'Spam indicators detected: {suspicious_count} suspicious patterns found. This email shows characteristics of spam or low-quality content.'
         else:
             decision = 'safe'
-            confidence = max(0.6, 1.0 - total_score * 0.1)
+            confidence = 0.7
+            description = f'No suspicious patterns detected: Email content appears safe with {suspicious_count} suspicious indicators found.'
         
         return {
             'model_source': self.model_source,
             'model_name': self.model_name,
             'decision': decision,
             'confidence': confidence,
-            'description': f'Pattern analysis: {phishing_score} phishing indicators, {spam_score} spam indicators'
+            'description': description
+        }
+    
+    def _error_result(self, error_msg: str) -> Dict[str, Any]:
+        """Return error result"""
+        return {
+            'model_source': self.model_source,
+            'model_name': self.model_name,
+            'decision': 'error',
+            'confidence': 0.0,
+            'description': error_msg
+        }
+
+class RuleBasedAnalyzer(ModelAnalyzer):
+    """Rule-based analyzer as fallback"""
+    
+    def __init__(self):
+        super().__init__("rule-based", "built-in")
+    
+    def analyze(self, email_text: str) -> Dict[str, Any]:
+        """Analyze email using rule-based approach"""
+        try:
+            # Extract metadata
+            metadata = self._extract_metadata(email_text.lower())
+            suspicious_patterns = self._detect_suspicious_patterns(email_text)
+            
+            # Calculate risk score
+            risk_score = 0
+            risk_factors = []
+            
+            # Check for suspicious patterns
+            if 'urgency' in suspicious_patterns:
+                risk_score += 30
+                risk_factors.append('Urgency indicators detected')
+            
+            if 'financial_request' in suspicious_patterns:
+                risk_score += 40
+                risk_factors.append('Financial request detected')
+            
+            if 'personal_info_request' in suspicious_patterns:
+                risk_score += 50
+                risk_factors.append('Personal information request detected')
+            
+            if 'suspicious_domain' in suspicious_patterns:
+                risk_score += 60
+                risk_factors.append('Suspicious domain detected')
+            
+            # Check metadata
+            if metadata['urgency_indicators'] > 0:
+                risk_score += metadata['urgency_indicators'] * 10
+                risk_factors.append(f'{metadata["urgency_indicators"]} urgency indicators')
+            
+            if metadata['money_indicators'] > 0:
+                risk_score += metadata['money_indicators'] * 15
+                risk_factors.append(f'{metadata["money_indicators"]} financial indicators')
+            
+            # Determine decision based on risk score
+            if risk_score >= 70:
+                decision = 'phishing'
+                confidence = min(risk_score / 100.0, 0.95)
+            elif risk_score >= 40:
+                decision = 'spam'
+                confidence = min(risk_score / 70.0, 0.85)
+            else:
+                decision = 'safe'
+                confidence = max(1.0 - (risk_score / 40.0), 0.6)
+            
+            # Create detailed description
+            if risk_factors:
+                description = f'Risk score: {risk_score}/100. Detected factors: {", ".join(risk_factors)}. This analysis is based on pattern matching and content analysis.'
+            else:
+                description = f'Risk score: {risk_score}/100. No suspicious patterns detected. Email appears to be safe based on rule-based analysis.'
+            
+            return {
+                'model_source': self.model_source,
+                'model_name': self.model_name,
+                'decision': decision,
+                'confidence': confidence,
+                'description': description
+            }
+            
+        except Exception as e:
+            return self._error_result(f"Analysis failed: {str(e)}")
+    
+    def _extract_metadata(self, text: str) -> Dict[str, Any]:
+        """Extract metadata from email text"""
+        words = text.split()
+        word_count = len(words)
+        char_count = len(text)
+        
+        # Count urgency indicators
+        urgency_words = ['urgent', 'immediate', 'asap', 'quickly', 'hurry', 'limited time', 'expires', 'deadline']
+        urgency_indicators = sum(1 for word in urgency_words if word in text)
+        
+        # Count money indicators
+        money_words = ['money', 'bank', 'account', 'credit card', 'payment', 'transfer', 'refund', 'lottery', 'inheritance']
+        money_indicators = sum(1 for word in money_words if word in text)
+        
+        # Check for URLs and email addresses
+        url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        
+        has_urls = bool(re.search(url_pattern, text))
+        has_email_addresses = bool(re.search(email_pattern, text))
+        
+        return {
+            'word_count': word_count,
+            'char_count': char_count,
+            'urgency_indicators': urgency_indicators,
+            'money_indicators': money_indicators,
+            'has_urls': has_urls,
+            'has_email_addresses': has_email_addresses
+        }
+    
+    def _detect_suspicious_patterns(self, text: str) -> List[str]:
+        """Detect suspicious patterns in email text"""
+        patterns = []
+        
+        # Urgency patterns
+        urgency_patterns = [
+            r'urgent.*action',
+            r'limited.*time',
+            r'expires.*soon',
+            r'act.*now',
+            r'immediate.*attention'
+        ]
+        
+        for pattern in urgency_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                patterns.append('urgency')
+                break
+        
+        # Financial request patterns
+        financial_patterns = [
+            r'bank.*account',
+            r'credit.*card',
+            r'payment.*required',
+            r'money.*transfer',
+            r'account.*verification'
+        ]
+        
+        for pattern in financial_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                patterns.append('financial_request')
+                break
+        
+        # Personal info request patterns
+        personal_patterns = [
+            r'social.*security',
+            r'password.*reset',
+            r'personal.*information',
+            r'verify.*identity',
+            r'account.*details'
+        ]
+        
+        for pattern in personal_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                patterns.append('personal_info_request')
+                break
+        
+        # Suspicious domain patterns
+        suspicious_domains = [
+            r'paypal.*verify',
+            r'bank.*secure',
+            r'account.*update',
+            r'security.*alert'
+        ]
+        
+        for pattern in suspicious_domains:
+            if re.search(pattern, text, re.IGNORECASE):
+                patterns.append('suspicious_domain')
+                break
+        
+        return patterns
+    
+    def _error_result(self, error_msg: str) -> Dict[str, Any]:
+        """Return error result"""
+        return {
+            'model_source': self.model_source,
+            'model_name': self.model_name,
+            'decision': 'error',
+            'confidence': 0.0,
+            'description': error_msg
         }
 
 class EmailAnalyzer:
-    """Main email analysis class that coordinates multiple models"""
+    """Main email analyzer that coordinates multiple models"""
     
     def __init__(self):
-        self.analyzers: List[ModelAnalyzer] = []
+        self.analyzers = []
         self.load_analyzers()
     
     def load_analyzers(self):
-        """Load all available analyzers"""
-        # Add ML model analyzers
-        if ML_AVAILABLE:
-            self.analyzers.append(CybersectonyDistilbertAnalyzer())
-            self.analyzers.append(AamoshDistilbertAnalyzer())
-        
-        # Add phishing-detector analyzer
+        """Load available analyzers"""
+        # Always try to load phishing-detection-py as primary analyzer
         if PHISHING_DETECTOR_AVAILABLE:
-            self.analyzers.append(PhishingDetectorAnalyzer())
+            try:
+                phishing_analyzer = PhishingDetectorAnalyzer()
+                self.add_analyzer(phishing_analyzer)
+                print("✓ Primary ML analyzer loaded")
+            except Exception as e:
+                print(f"Failed to load primary ML analyzer: {e}")
         
         # Always add rule-based analyzer as fallback
-        self.analyzers.append(RuleBasedAnalyzer())
-        
-        print(f"Loaded {len(self.analyzers)} analyzers")
+        self.add_analyzer(RuleBasedAnalyzer())
+        print("✓ Rule-based fallback analyzer loaded")
     
     def add_analyzer(self, analyzer: ModelAnalyzer):
-        """Add a custom analyzer"""
+        """Add an analyzer to the list"""
         self.analyzers.append(analyzer)
-        print(f"Added custom analyzer: {analyzer.model_name}")
     
     def analyze_email(self, email_text: str) -> List[Dict[str, Any]]:
-        """Analyze email text with all available models"""
+        """Analyze email using all available models"""
         results = []
         
         for analyzer in self.analyzers:
@@ -357,13 +353,13 @@ class EmailAnalyzer:
                 result = analyzer.analyze(email_text)
                 results.append(result)
             except Exception as e:
-                # Add error result for failed analyzer
+                # Add error result for this analyzer
                 results.append({
                     'model_source': analyzer.model_source,
                     'model_name': analyzer.model_name,
                     'decision': 'error',
                     'confidence': 0.0,
-                    'description': f'Analyzer failed: {str(e)}'
+                    'description': f'Analysis failed: {str(e)}'
                 })
         
         return results
@@ -372,7 +368,7 @@ class EmailAnalyzer:
 _analyzer = None
 
 def get_analyzer() -> EmailAnalyzer:
-    """Get or create global analyzer instance"""
+    """Get or create the global analyzer instance"""
     global _analyzer
     if _analyzer is None:
         _analyzer = EmailAnalyzer()
@@ -380,61 +376,37 @@ def get_analyzer() -> EmailAnalyzer:
 
 def analyze_email_with_models(email_text: str) -> List[Dict[str, Any]]:
     """
-    Main function to analyze email text with multiple models
+    Main function to analyze email with all available models
     
     Args:
         email_text: Email text to analyze
         
     Returns:
-        List of analysis results from different models
+        List of model results with required fields
     """
-    try:
-        analyzer = get_analyzer()
-        results = analyzer.analyze_email(email_text)
-        return results
-    except Exception as e:
-        # Return error result if analysis fails
-        return [{
-            'model_source': 'system',
-            'model_name': 'error_handler',
-            'decision': 'error',
-            'confidence': 0.0,
-            'description': f'Analysis failed: {str(e)}'
-        }]
+    analyzer = get_analyzer()
+    return analyzer.analyze_email(email_text)
 
 def get_model_info() -> Dict[str, Any]:
     """Get information about available models"""
     analyzer = get_analyzer()
+    models = []
+    
+    for analyzer_instance in analyzer.analyzers:
+        models.append({
+            'name': analyzer_instance.model_name,
+            'source': analyzer_instance.model_source,
+            'status': 'loaded' if hasattr(analyzer_instance, 'detector') and analyzer_instance.detector else 'available'
+        })
+    
     return {
-        'total_analyzers': len(analyzer.analyzers),
-        'analyzers': [a.model_name for a in analyzer.analyzers],
-        'ml_available': ML_AVAILABLE,
-        'phishing_detector_available': PHISHING_DETECTOR_AVAILABLE
+        'total_models': len(models),
+        'models': models,
+        'primary_ml_available': PHISHING_DETECTOR_AVAILABLE,
+        'primary_model': 'phishing-detection-py' if PHISHING_DETECTOR_AVAILABLE else 'rule-based'
     }
 
 def add_custom_analyzer(analyzer: ModelAnalyzer):
-    """Add a custom analyzer to the global instance"""
-    analyzer_instance = get_analyzer()
-    analyzer_instance.add_analyzer(analyzer)
-
-# Test function
-if __name__ == "__main__":
-    # Test with sample email
-    test_email = """
-    Dear Customer,
-    
-    Your account has been suspended due to suspicious activity. 
-    Please click here to verify your identity: http://fake-bank.tk/verify
-    
-    This is urgent and requires immediate attention.
-    
-    Best regards,
-    Bank Security Team
-    """
-    
-    results = analyze_email_with_models(test_email)
-    print("Analysis Results:")
-    for result in results:
-        print(f"- {result['model_name']}: {result['decision']} ({result['confidence']:.2%})")
-        print(f"  {result['description']}")
-        print()
+    """Add a custom analyzer to the global analyzer"""
+    global_analyzer = get_analyzer()
+    global_analyzer.add_analyzer(analyzer)

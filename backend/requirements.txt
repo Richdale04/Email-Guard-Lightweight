@@ -5,13 +5,6 @@ python-jose[cryptography]
 passlib[bcrypt]
 python-dotenv
 pydantic
-pandas
-numpy
-scikit-learn
-transformers
-torch
 requests
 aiofiles
-redis
-httpx
-phishing-detector
+phishing-detection-py

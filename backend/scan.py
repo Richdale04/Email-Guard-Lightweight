@@ -1,19 +1,19 @@
-﻿import sys
+import sys
 import os
 from typing import List, Dict, Any
 import json
 from datetime import datetime
 
 # Add the ai directory to the path to import email_guard
-ai_path = '/app/ai'
+ai_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ai')
 sys.path.append(ai_path)
 
 
 try:
     from email_guard import analyze_email_with_models
-    print("âœ… Successfully imported email_guard")
+    print("Successfully imported email_guard")
 except ImportError as e:
-    print(f"âŒ Failed to import email_guard: {e}")
+    print(f"Failed to import email_guard: {e}")
     # Fallback if email_guard is not available
     def analyze_email_with_models(email_text: str) -> List[Dict[str, Any]]:
         return []
@@ -119,13 +119,19 @@ def fallback_analysis(email_text: str) -> List[Dict[str, Any]]:
         decision = 'safe'
         confidence = max(1.0 - (risk_score / 40.0), 0.6)
     
+    # Create detailed description for rule-based analysis
+    if risk_factors:
+        rule_description = f'Risk score: {risk_score}/100. Detected factors: {", ".join(risk_factors)}. This analysis is based on pattern matching and content analysis.'
+    else:
+        rule_description = f'Risk score: {risk_score}/100. No suspicious patterns detected. Email appears to be safe based on rule-based analysis.'
+    
     # Create result
     results.append({
         'model_source': 'rule_based',
         'model_name': 'basic_analyzer',
         'decision': decision,
         'confidence': confidence,
-        'description': f'Risk score: {risk_score}/100. Factors: {", ".join(risk_factors) if risk_factors else "No suspicious patterns detected"}'
+        'description': rule_description
     })
     
     # Add metadata analysis
@@ -134,7 +140,7 @@ def fallback_analysis(email_text: str) -> List[Dict[str, Any]]:
         'model_name': 'content_analyzer',
         'decision': 'info',
         'confidence': 0.9,
-        'description': f'Content analysis: {metadata["word_count"]} words, {metadata["char_count"]} characters, URLs: {metadata["has_urls"]}, Emails: {metadata["has_email_addresses"]}'
+        'description': f'Email content analysis: {metadata["word_count"]} words, {metadata["char_count"]} characters. Contains URLs: {metadata["has_urls"]}, Email addresses: {metadata["has_email_addresses"]}, Urgency indicators: {metadata["urgency_indicators"]}, Financial indicators: {metadata["money_indicators"]}.'
     })
     
     return results
