@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any
 import hashlib
 
 # JWT Configuration
-SECRET_KEY = "your-secret-key-change-in-production"  # In production, use environment variable
+SECRET_KEY = "JWT_SECRET_KEY"  # In production, use environment variable
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
