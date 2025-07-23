@@ -8,6 +8,7 @@ A streamlined FastAPI backend for email phishing detection, specifically optimiz
 
 **Frontend**: [https://email-guard-cyan.vercel.app/](https://email-guard-cyan.vercel.app/)
 **Backend**: Deployed on Replit (URL configured via `VITE_API_URL` environment variable)
+- Replit deployment code: https://replit.com/@Richdaleintern0/EmailGuardLightweight
 
 ## 📊 Version Comparison
 
