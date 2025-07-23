@@ -1,0 +1,31 @@
+entrypoint = "main.py"
+modules = ["python-3.11"]
+
+[nix]
+channel = "stable-24_05"
+
+[unitTest]
+language = "python3"
+
+[gitHubImport]
+requiredFiles = [".replit", "replit.nix"]
+
+[deployment]
+run = ["sh", "-c", "python3 main.py"]
+deploymentTarget = "cloudrun"
+
+[workflows]
+runButton = "Start FastAPI Server"
+
+[[workflows.workflow]]
+name = "Start FastAPI Server"
+author = 45247414
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 main.py"
+
+[[ports]]
+localPort = 5000
+externalPort = 80

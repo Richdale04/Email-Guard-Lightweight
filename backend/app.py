@@ -1,5 +1,6 @@
-﻿from fastapi import FastAPI, HTTPException, Depends, Request, Response
+from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
@@ -7,11 +8,26 @@ from datetime import datetime, timedelta
 import json
 from typing import List, Optional
 
-from modules.authenticate import authenticate_token, create_jwt_token, verify_jwt_token
-from modules.verify import verify_and_sanitize_input
-from scan import scan_email, save_scan_history, get_scan_history
+from backend.modules.authenticate import authenticate_token, create_jwt_token, verify_jwt_token
+from backend.modules.verify import verify_and_sanitize_input
+from backend.scan import scan_email, save_scan_history, get_scan_history
 
 app = FastAPI(title="Email Guard API", version="1.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://email-guard-hwgllmxq8-yassirs-projects-b2d56ad8.vercel.app",
+        "https://email-guard-cyan.vercel.app",  # New Vercel deployment
+        "https://*.vercel.app",  # Allow all Vercel deployments
+        "http://localhost:3000",  # For local development
+        "http://localhost:5173",  # For Vite dev server
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 

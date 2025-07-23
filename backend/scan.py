@@ -70,7 +70,7 @@ def fallback_analysis(email_text: str) -> List[Dict[str, Any]]:
     Returns:
         List of basic analysis results
     """
-    from modules.verify import extract_email_metadata, detect_suspicious_patterns
+    from backend.modules.verify import extract_email_metadata, detect_suspicious_patterns
     
     # Extract metadata
     metadata = extract_email_metadata(email_text.lower())
